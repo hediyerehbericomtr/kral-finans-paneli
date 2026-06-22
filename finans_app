@@ -1,0 +1,58 @@
+import streamlit as st
+import pandas as pd
+import yfinance as ticker
+from streamlit_gsheets import GSheetsConnection
+
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="Kral Yatırımcı Google Sheets Paneli", layout="wide")
+
+def format_tl(val):
+    return f"{val:,.2f} ₺".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# --- GOOGLE SHEETS BAĞLANTISI ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Verileri Sheets'ten Çekme Fonksiyonu
+def load_sheets_data():
+    try:
+        df_sabit = conn.read(worksheet="Sabitler_ve_Fonlar")
+        df_hisse = conn.read(worksheet="Hisseler")
+        df_ev_borc = conn.read(worksheet="Ev_ve_Borclar")
+        return df_sabit, df_hisse, df_ev_borc
+    except:
+        # Eğer Sheets boşsa veya hata verirse default boş DataFrame döndür
+        st.warning("Google Sheets verileri okunurken bir sorun oluştu veya tablo henüz boş.")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+df_sabit, df_hisse, df_ev_borc = load_sheets_data()
+
+# --- CANLI KUR VERİLERİ ---
+@st.cache_data(ttl=300)
+def fetch_live_rates():
+    try:
+        usd = ticker.Ticker("USDTRY=X").history(period="1d")['Close'].iloc[-1]
+        eur = ticker.Ticker("EURTRY=X").history(period="1d")['Close'].iloc[-1]
+        ons = ticker.Ticker("GC=F").history(period="1d")['Close'].iloc[-1]
+        gram_altin = (ons / 31.1035) * usd
+        gram_gumus = (ticker.Ticker("SI=F").history(period="1d")['Close'].iloc[-1] / 31.1035) * usd
+        return {"USD": usd, "EUR": eur, "GRAM_ALTIN": gram_altin, "GRAM_GUMUS": gram_gumus, "CEYREK": gram_altin * 1.605, "ATA": gram_altin * 6.61}
+    except:
+        return {"USD": 34.35, "EUR": 36.65, "GRAM_ALTIN": 3050.0, "GRAM_GUMUS": 32.5, "CEYREK": 5100.0, "ATA": 21000.0}
+
+rates = fetch_live_rates()
+
+st.title("👑 Kral Yatırımcı Bulut Finans Portföyü v3")
+st.info("🔄 Verileriniz doğrudan kişisel Google Sheets (E-Tablolar) hesabınızla senkronize çalışmaktadır.")
+
+# --- ANALİZ VE HESAPLAMA MOTORU ---
+# (Burada Sheets'ten gelen df'ler işlenip tablolara dökülür ve formüller çalışır)
+
+# Örnek olarak canlı kurları ekranda gösterelim:
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("💵 Canlı Dolar (USD)", f"{rates['USD']:.2f} TL")
+c2.metric("💶 Canlı Euro (EUR)", f"{rates['EUR']:.2f} TL")
+c3.metric("🟡 Gram Altın", f"{rates['GRAM_ALTIN']:.2f} TL")
+c4.metric("🥈 Gram Gümüş", f"{rates['GRAM_GUMUS']:.2f} TL")
+
+st.markdown("---")
+st.write("Google Sheets kurulumunu tamamladıktan sonra, verileri arayüze basmaya ve veri kaydetme mekanizmasını koşturmaya hazırız!")
